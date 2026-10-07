@@ -1,5 +1,7 @@
 # gha-tui
 
+[![CI](https://github.com/kristaxox/gha-tui/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kristaxox/gha-tui/actions/workflows/ci.yml)
+
 A single dependency-free Go binary that draws a GitHub repository's open pull
 requests and the GitHub Actions checks running on them as a live, navigable
 tree in the terminal.
