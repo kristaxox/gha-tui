@@ -1,0 +1,59 @@
+# Lint configuration for gha-tui.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - revive
+    - unconvert
+    - unparam
+    - whitespace
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        # The struct layouts here are chosen for readability, not packing.
+        - fieldalignment
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        # A tagged switch on a small enum reads better than if/else here.
+        - ifElseChain
+        # Check and PullRequest are deliberately values: the tree holds its own
+        # copies so a refresh cannot mutate what is on screen underneath the
+        # cursor. Passing them by pointer to save a copy would trade that safety
+        # for an allocation this tool does not need -- the data is one API page.
+        - hugeParam
+        - rangeValCopy
+
+  exclusions:
+    rules:
+      # Tests deliberately ignore errors from helpers and shell out to nothing;
+      # the strictness that protects the binary is noise there.
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
