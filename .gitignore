@@ -1,0 +1,5 @@
+/gha-tui
+*.test
+*.out
+.DS_Store
+.env
