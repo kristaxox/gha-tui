@@ -79,6 +79,9 @@ type App struct {
 	hideDrafts bool
 	showHelp   bool
 
+	autoCollapse  bool // fold sections whose checks have all finished
+	highlightDone bool // paint a pull request green once all its checks finished
+
 	lastRefresh time.Time
 	lastErr     error
 	loading     bool
@@ -206,6 +209,9 @@ func (a *App) isExpanded(n *Node) bool {
 	if v, ok := a.overrides[n.Key]; ok {
 		return v
 	}
+	if a.autoCollapse && n.Kind != NodeRepo && len(n.Children) > 0 && leavesDone(n) {
+		return false
+	}
 	switch n.Kind {
 	case NodeRepo, NodeBranch, NodePR:
 		return true
@@ -214,6 +220,28 @@ func (a *App) isExpanded(n *Node) bool {
 	default:
 		return false
 	}
+}
+
+// leavesDone reports whether every leaf under n has reached a final state. A
+// node with no children is its own leaf, and the "no checks reported"
+// placeholder is never final, so a pull request without checks does not count.
+func leavesDone(n *Node) bool {
+	if len(n.Children) == 0 {
+		return n.State.Terminal()
+	}
+	for _, c := range n.Children {
+		if !leavesDone(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// allChecksDone reports whether a row should get the "finished" highlight:
+// every check has completed and none of them failed or was cancelled, so green
+// never paints over a red result.
+func allChecksDone(n *Node) bool {
+	return n.Kind == NodePR && leavesDone(n) && n.State != StateFailure && n.State != StateCancelled
 }
 
 // Rows returns the currently visible rows.
@@ -289,6 +317,13 @@ func (a *App) Key(key string, now time.Time) Action {
 		a.hideDrafts = !a.hideDrafts
 		a.rebuild(now)
 		a.status = fmt.Sprintf("drafts %s", onOff(!a.hideDrafts))
+	case "a":
+		a.autoCollapse = !a.autoCollapse
+		a.rebuildPreservingCursor(now)
+		a.status = fmt.Sprintf("auto-collapse finished sections %s", onOffWord(a.autoCollapse))
+	case "H":
+		a.highlightDone = !a.highlightDone
+		a.status = fmt.Sprintf("highlight finished pull requests %s", onOffWord(a.highlightDone))
 	case "m":
 		a.hideMain = !a.hideMain
 		a.rebuild(now)
@@ -303,6 +338,13 @@ func onOff(v bool) string {
 		return "shown"
 	}
 	return "hidden"
+}
+
+func onOffWord(v bool) string {
+	if v {
+		return "on"
+	}
+	return "off"
 }
 
 func (a *App) page() int {

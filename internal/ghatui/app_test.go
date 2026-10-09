@@ -539,3 +539,80 @@ func TestJumpSkipsBranch(t *testing.T) {
 		t.Errorf("J landed on %v, want a pull request", n)
 	}
 }
+
+func rowFor(a *App, key string) (Row, bool) {
+	for _, r := range a.Rows() {
+		if r.Node.Key == key {
+			return r, true
+		}
+	}
+	return Row{}, false
+}
+
+func TestAutoCollapseFoldsFinishedSections(t *testing.T) {
+	a := newTestApp(t)
+	// The failing workflow opens itself by default.
+	if r, ok := rowFor(a, "pr:1/wf:CI"); !ok || !r.Expanded {
+		t.Fatalf("failing workflow should start expanded: %+v", r)
+	}
+
+	a.Key("a", testNow)
+	if r, ok := rowFor(a, "pr:1"); !ok || r.Expanded {
+		t.Errorf("PR 1 has only finished checks and should fold: %+v", r)
+	}
+	if r, ok := rowFor(a, "pr:2/wf:CI"); !ok || !r.Expanded {
+		t.Errorf("PR 2 is still running and should stay open: %+v", r)
+	}
+
+	a.Key("a", testNow)
+	if r, _ := rowFor(a, "pr:1"); !r.Expanded {
+		t.Errorf("toggling off should restore the default expansion")
+	}
+}
+
+func TestAutoCollapseRespectsExplicitToggle(t *testing.T) {
+	a := newTestApp(t)
+	a.Key("a", testNow)
+	a.overrides["pr:1"] = true
+	a.rebuildPreservingCursor(testNow)
+	if r, _ := rowFor(a, "pr:1"); !r.Expanded {
+		t.Errorf("a section the user opened by hand must stay open")
+	}
+}
+
+func TestAutoCollapseIgnoresPRWithoutChecks(t *testing.T) {
+	a := NewApp("o/r")
+	a.SetData([]PullRequest{{Number: 9, Title: "bare"}}, nil, testNow)
+	a.Key("a", testNow)
+	if r, _ := rowFor(a, "pr:9"); !r.Expanded {
+		t.Errorf("a PR with no checks has nothing finished to fold")
+	}
+}
+
+func TestHighlightFinishedPR(t *testing.T) {
+	a := newTestApp(t)
+	th := Theme{Color: true}
+	find := func(num string) string {
+		for i, r := range a.Rows() {
+			if r.Node.Kind == NodePR && strings.HasPrefix(r.Node.Label, num+" ") {
+				return a.rowLine(th, 80, i)
+			}
+		}
+		t.Fatalf("no row for %s", num)
+		return ""
+	}
+
+	if strings.Contains(find("#3"), ansiGreenBG) {
+		t.Fatal("highlight must be off by default")
+	}
+	a.Key("H", testNow)
+	if !strings.Contains(find("#3"), ansiGreenBG) {
+		t.Errorf("finished passing PR should be green")
+	}
+	if strings.Contains(find("#1"), ansiGreenBG) {
+		t.Errorf("a failed PR must not be green")
+	}
+	if strings.Contains(find("#2"), ansiGreenBG) {
+		t.Errorf("a running PR must not be green")
+	}
+}
