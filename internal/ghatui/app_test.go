@@ -606,9 +606,20 @@ func TestHighlightFinishedPR(t *testing.T) {
 		t.Fatal("highlight must be off by default")
 	}
 	a.Key("H", testNow)
-	if !strings.Contains(find("#3"), ansiGreenBG) {
-		t.Errorf("finished passing PR should be green")
+	if strings.Contains(find("#3"), ansiGreenBG) {
+		t.Errorf("PR finished minutes ago should not be green")
 	}
+	// Move the clock to 10s after PR 3's last check completed, then past 30s.
+	done := a.prs[2].Checks[0].CompletedAt
+	a.Tick(done.Add(10 * time.Second))
+	if !strings.Contains(find("#3"), ansiGreenBG) {
+		t.Errorf("recently finished PR should be green")
+	}
+	a.Tick(done.Add(31 * time.Second))
+	if strings.Contains(find("#3"), ansiGreenBG) {
+		t.Errorf("highlight should expire after 30s")
+	}
+	a.Tick(done.Add(10 * time.Second))
 	if strings.Contains(find("#1"), ansiGreenBG) {
 		t.Errorf("a failed PR must not be green")
 	}

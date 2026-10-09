@@ -31,6 +31,7 @@ type Node struct {
 	Detail   string
 	State    State
 	URL      string
+	Finished time.Time    // latest check completion, set on NodePR
 	PR       *PullRequest // set on NodePR and below, for actions like "open"
 	Branch   *Branch      // set on NodeBranch and below
 	Children []*Node
@@ -69,6 +70,11 @@ func BuildTree(repo string, branch *Branch, prs []PullRequest, now time.Time) *N
 			State:  prState,
 			URL:    pr.URL,
 			PR:     pr,
+		}
+		for _, c := range pr.Checks {
+			if c.CompletedAt.After(prNode.Finished) {
+				prNode.Finished = c.CompletedAt
+			}
 		}
 
 		for _, g := range groupByWorkflow(pr.Checks) {

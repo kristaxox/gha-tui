@@ -82,6 +82,7 @@ type App struct {
 	autoCollapse  bool // fold sections whose checks have all finished
 	highlightDone bool // paint a pull request green once all its checks finished
 
+	now         time.Time // clock of the last rebuild, for time-limited highlights
 	lastRefresh time.Time
 	lastErr     error
 	loading     bool
@@ -142,6 +143,7 @@ func (a *App) rebuildPreservingCursor(now time.Time) {
 }
 
 func (a *App) rebuild(now time.Time) {
+	a.now = now
 	a.root = BuildTree(a.Repo, a.visibleBranch(), a.visiblePRs(), now)
 	a.rows = Flatten(a.root, a.isExpanded)
 	if a.sel >= len(a.rows) {
@@ -244,6 +246,20 @@ func allChecksDone(n *Node) bool {
 	return n.Kind == NodePR && leavesDone(n) && n.State != StateFailure && n.State != StateCancelled
 }
 
+// highlightWindow is how long a pull request stays green after its last check
+// finishes; the highlight is a notification, not a permanent state.
+const highlightWindow = 30 * time.Second
+
+// justFinished reports whether n should be highlighted at the clock of the last
+// rebuild: all checks done, none red, and the last one finished recently.
+func (a *App) justFinished(n *Node) bool {
+	if !allChecksDone(n) || n.Finished.IsZero() {
+		return false
+	}
+	age := a.now.Sub(n.Finished)
+	return age >= 0 && age < highlightWindow
+}
+
 // Rows returns the currently visible rows.
 func (a *App) Rows() []Row { return a.rows }
 
@@ -323,7 +339,7 @@ func (a *App) Key(key string, now time.Time) Action {
 		a.status = fmt.Sprintf("auto-collapse finished sections %s", onOffWord(a.autoCollapse))
 	case "H":
 		a.highlightDone = !a.highlightDone
-		a.status = fmt.Sprintf("highlight finished pull requests %s", onOffWord(a.highlightDone))
+		a.status = fmt.Sprintf("highlight just-finished pull requests %s", onOffWord(a.highlightDone))
 	case "m":
 		a.hideMain = !a.hideMain
 		a.rebuild(now)

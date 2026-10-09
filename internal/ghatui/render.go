@@ -303,7 +303,7 @@ func (a *App) rowLine(t Theme, width, i int) string {
 	if selected && t.Color {
 		return ansiInvert + stripNested(line) + ansiReset
 	}
-	if a.highlightDone && t.Color && allChecksDone(n) {
+	if a.highlightDone && t.Color && a.justFinished(n) {
 		// Re-apply the background after every reset, or the first coloured
 		// segment would end the highlight partway along the row.
 		return ansiGreenBG + strings.ReplaceAll(line, ansiReset, ansiReset+ansiGreenBG) + ansiReset
@@ -412,7 +412,7 @@ func helpLines(t Theme, height int) []string {
 		{"g / G", "first / last row"},
 		{"ctrl-d / ctrl-u", "page down / up"},
 		{"a", "auto-collapse sections once all their checks have finished"},
-		{"H", "highlight pull requests green once all their checks have passed"},
+		{"H", "green-highlight a pull request for 30s after all its checks finish"},
 		{"f", "cycle filter: all → needs attention → in flight → mine"},
 		{"d", "show or hide draft pull requests"},
 		{"m", "show or hide the default branch"},
