@@ -22,8 +22,9 @@ const (
 	// Chrome -- tree prefixes, the detail column, the key bar -- uses the
 	// terminal's own foreground dimmed rather than colour 90 ("bright black"),
 	// which many dark themes render as near-black and so nearly invisible.
-	ansiGrey   = "\x1b[2m"
-	ansiInvert = "\x1b[7m"
+	ansiGrey    = "\x1b[2m"
+	ansiInvert  = "\x1b[7m"
+	ansiGreenBG = "\x1b[42m"
 )
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -302,6 +303,11 @@ func (a *App) rowLine(t Theme, width, i int) string {
 	if selected && t.Color {
 		return ansiInvert + stripNested(line) + ansiReset
 	}
+	if a.highlightDone && t.Color && a.justFinished(n) {
+		// Re-apply the background after every reset, or the first coloured
+		// segment would end the highlight partway along the row.
+		return ansiGreenBG + strings.ReplaceAll(line, ansiReset, ansiReset+ansiGreenBG) + ansiReset
+	}
 	return line
 }
 
@@ -387,7 +393,7 @@ func (a *App) statusLine(t Theme, width int, _ time.Time) string {
 
 func (a *App) keyLine(t Theme, width int) string {
 	var l lineBuf
-	keys := " j/k move · h/l fold · ⏎ toggle · J/K next PR · e/c all · f filter · d drafts · m main · o open · r refresh · ? help · q quit"
+	keys := " j/k move · h/l fold · ⏎ toggle · J/K next PR · e/c all · a auto-fold · H done · f filter · d drafts · m main · o open · r refresh · ? help · q quit"
 	if t.ASCII {
 		keys = strings.ReplaceAll(keys, "⏎", "enter")
 		keys = strings.ReplaceAll(keys, "·", "|")
@@ -405,6 +411,8 @@ func helpLines(t Theme, height int) []string {
 		{"e / c", "unfold everything / fold everything"},
 		{"g / G", "first / last row"},
 		{"ctrl-d / ctrl-u", "page down / up"},
+		{"a", "auto-collapse sections once all their checks have finished"},
+		{"H", "green-highlight a pull request for 30s after all its checks finish"},
 		{"f", "cycle filter: all → needs attention → in flight → mine"},
 		{"d", "show or hide draft pull requests"},
 		{"m", "show or hide the default branch"},

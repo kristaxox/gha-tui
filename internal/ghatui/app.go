@@ -79,6 +79,10 @@ type App struct {
 	hideDrafts bool
 	showHelp   bool
 
+	autoCollapse  bool // fold sections whose checks have all finished
+	highlightDone bool // paint a pull request green once all its checks finished
+
+	now         time.Time // clock of the last rebuild, for time-limited highlights
 	lastRefresh time.Time
 	lastErr     error
 	loading     bool
@@ -139,6 +143,7 @@ func (a *App) rebuildPreservingCursor(now time.Time) {
 }
 
 func (a *App) rebuild(now time.Time) {
+	a.now = now
 	a.root = BuildTree(a.Repo, a.visibleBranch(), a.visiblePRs(), now)
 	a.rows = Flatten(a.root, a.isExpanded)
 	if a.sel >= len(a.rows) {
@@ -206,6 +211,9 @@ func (a *App) isExpanded(n *Node) bool {
 	if v, ok := a.overrides[n.Key]; ok {
 		return v
 	}
+	if a.autoCollapse && n.Kind != NodeRepo && len(n.Children) > 0 && leavesDone(n) {
+		return false
+	}
 	switch n.Kind {
 	case NodeRepo, NodeBranch, NodePR:
 		return true
@@ -214,6 +222,42 @@ func (a *App) isExpanded(n *Node) bool {
 	default:
 		return false
 	}
+}
+
+// leavesDone reports whether every leaf under n has reached a final state. A
+// node with no children is its own leaf, and the "no checks reported"
+// placeholder is never final, so a pull request without checks does not count.
+func leavesDone(n *Node) bool {
+	if len(n.Children) == 0 {
+		return n.State.Terminal()
+	}
+	for _, c := range n.Children {
+		if !leavesDone(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// allChecksDone reports whether a row should get the "finished" highlight:
+// every check has completed and none of them failed or was cancelled, so green
+// never paints over a red result.
+func allChecksDone(n *Node) bool {
+	return n.Kind == NodePR && leavesDone(n) && n.State != StateFailure && n.State != StateCancelled
+}
+
+// highlightWindow is how long a pull request stays green after its last check
+// finishes; the highlight is a notification, not a permanent state.
+const highlightWindow = 30 * time.Second
+
+// justFinished reports whether n should be highlighted at the clock of the last
+// rebuild: all checks done, none red, and the last one finished recently.
+func (a *App) justFinished(n *Node) bool {
+	if !allChecksDone(n) || n.Finished.IsZero() {
+		return false
+	}
+	age := a.now.Sub(n.Finished)
+	return age >= 0 && age < highlightWindow
 }
 
 // Rows returns the currently visible rows.
@@ -289,6 +333,13 @@ func (a *App) Key(key string, now time.Time) Action {
 		a.hideDrafts = !a.hideDrafts
 		a.rebuild(now)
 		a.status = fmt.Sprintf("drafts %s", onOff(!a.hideDrafts))
+	case "a":
+		a.autoCollapse = !a.autoCollapse
+		a.rebuildPreservingCursor(now)
+		a.status = fmt.Sprintf("auto-collapse finished sections %s", onOffWord(a.autoCollapse))
+	case "H":
+		a.highlightDone = !a.highlightDone
+		a.status = fmt.Sprintf("highlight just-finished pull requests %s", onOffWord(a.highlightDone))
 	case "m":
 		a.hideMain = !a.hideMain
 		a.rebuild(now)
@@ -303,6 +354,13 @@ func onOff(v bool) string {
 		return "shown"
 	}
 	return "hidden"
+}
+
+func onOffWord(v bool) string {
+	if v {
+		return "on"
+	}
+	return "off"
 }
 
 func (a *App) page() int {
